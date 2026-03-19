@@ -1,0 +1,116 @@
+server:
+  port: 8080
+  servlet:
+    context-path: /
+
+spring:
+  application:
+    name: sansend
+
+  servlet:
+    multipart:
+      max-file-size: 100MB
+      max-request-size: 100MB
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+
+# --- S3 Configuration ---
+s3:
+  endpoint: ${S3_ENDPOINT:http://localhost:9000}
+  bucket: ${S3_BUCKET:sansend}
+  access-key: ${S3_ACCESS_KEY:minioadmin}
+  secret-key: ${S3_SECRET_KEY:minioadmin}
+  region: ${S3_REGION:us-east-1}
+
+# --- App Configuration ---
+sansend:
+  chunk-size-bytes: 10485760  # 10 MB default chunk size
+  jwt-secret: ${JWT_SECRET:sansend-dev-secret-key-that-is-at-least-256-bits-long!!}
+  jwt-expiry-minutes: 15
+  rate-limit:
+    upload-init-max: 100
+    upload-init-window-seconds: 60
+  cleanup:
+    cron: "0 0 * * * *"  # Every hour
+    abandoned-upload-hours: 24
+
+# --- OpenAPI ---
+springdoc:
+  api-docs:
+    path: /api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operationsSorter: method
+
+# --- Actuator ---
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+
+---
+# ==================== DEV PROFILE ====================
+spring:
+  config:
+    activate:
+      on-profile: dev
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/sansend?stringtype=unspecified
+    username: sansend
+    password: sansend
+
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
+  jpa:
+    show-sql: true
+
+logging:
+  level:
+    com.sansend: DEBUG
+    org.springframework.security: DEBUG
+
+---
+# ==================== PROD PROFILE ====================
+spring:
+  config:
+    activate:
+      on-profile: prod
+
+  datasource:
+    url: ${DATABASE_URL}
+    username: ${DATABASE_USERNAME}
+    password: ${DATABASE_PASSWORD}
+
+  data:
+    redis:
+      host: ${REDIS_HOST}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+
+  jpa:
+    show-sql: false
+
+logging:
+  level:
+    com.sansend: INFO
+    org.springframework.security: WARN
