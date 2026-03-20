@@ -98,7 +98,7 @@ export const authenticateFile = async (linkId: string, password: string): Promis
 };
 
 export const getDownloadUrl = (linkId: string, token?: string): string => {
-    const base = `/api/file/${linkId}/download`;
+    const base = `${api.defaults.baseURL}/file/${linkId}/download`;
     return token ? `${base}?token=${encodeURIComponent(token)}` : base;
 };
 
