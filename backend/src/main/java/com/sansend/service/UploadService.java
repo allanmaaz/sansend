@@ -192,7 +192,20 @@ public class UploadService {
                                                 .build())
                                 .build();
 
-                s3Client.completeMultipartUpload(s3Request);
+                try {
+                        s3Client.completeMultipartUpload(s3Request);
+                } catch (Exception e) {
+                        // Supabase S3 / R2 sometimes returns an empty 200 OK response for completion,
+                        // which crashes the AWS SDK XML parser.
+                        if (e.getMessage() != null && e.getMessage().contains("Unable to unmarshall")
+                                        && e.getMessage().contains("200")) {
+                                log.warn("Caught S3 unmarshalling exception on a 200 OK response. Treating upload as successfully completed.");
+                        } else {
+                                log.error("Failed to complete S3 multipart upload", e);
+                                throw new IllegalStateException(
+                                                "Failed to complete S3 multipart upload: " + e.getMessage(), e);
+                        }
+                }
 
                 // Update upload status
                 upload.setStatus(UploadStatus.COMPLETE);
