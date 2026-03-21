@@ -227,7 +227,7 @@ export default function P2PPage() {
                 setStatus('error'); cleanup(); return;
             }
         }
-        if (offsetRef.current >= file.size && status !== 'complete') {
+        if (offsetRef.current >= file.size) {
             dc.send(JSON.stringify({ type: 'done' }));
             setStatus('complete');
         }
