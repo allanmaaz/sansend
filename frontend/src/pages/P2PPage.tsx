@@ -3,8 +3,9 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { QRCodeSVG } from 'qrcode.react';
 import { formatBytes, formatDuration, formatSpeed } from '../utils';
 
-const CHUNK_SIZE = 64 * 1024; // 64KB for WebRTC DataChannel (reliable)
-const MAX_BUFFER_AMOUNT = 16 * 1024 * 1024; // Pause sending if buffer over 16MB
+const CHUNK_SIZE = 256 * 1024; // 256KB for much higher throughput
+const MAX_BUFFER_AMOUNT = 8 * 1024 * 1024; // 8MB buffer
+const BUFFER_LOW_THRESHOLD = 1024 * 1024; // 1MB low threshold trigger
 
 type P2PRole = 'sender' | 'receiver' | null;
 type P2PState = 'idle' | 'waiting' | 'connecting' | 'connected' | 'transferring' | 'complete' | 'error';
@@ -70,12 +71,15 @@ export default function P2PPage() {
     };
 
     const getWsUrl = () => {
-        const isProd = import.meta.env.PROD;
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        if (isProd) {
-            return `${protocol}//sansend.onrender.com/api/ws/signaling`;
+        const apiUrl = import.meta.env.VITE_API_URL || '';
+        if (apiUrl.startsWith('http')) {
+            return apiUrl.replace('http', 'ws') + '/ws/signaling';
         }
-        return 'ws://localhost:8080/api/ws/signaling';
+        // Fallback to current host if relative or not set
+        const host = window.location.host;
+        const backendHost = import.meta.env.PROD ? 'sansend.onrender.com' : 'localhost:8080';
+        return `${protocol}//${backendHost}/api/ws/signaling`;
     };
 
     const connectWebSocket = useCallback((id: string, isSender: boolean) => {
@@ -214,6 +218,7 @@ export default function P2PPage() {
     };
 
     const setupDataChannelSender = (dc: RTCDataChannel) => {
+        dc.bufferedAmountLowThreshold = BUFFER_LOW_THRESHOLD;
         dc.onopen = () => {
             setStatus('connected');
             // Send metadata first
@@ -224,6 +229,12 @@ export default function P2PPage() {
             }));
         };
 
+        dc.onbufferedamountlow = () => {
+            if (status === 'transferring' && !abortRef.current) {
+                sendFileChunks(dc);
+            }
+        };
+
         dc.onmessage = (e) => {
             if (e.data === 'meta-ack') {
                 setStatus('transferring');
@@ -231,58 +242,38 @@ export default function P2PPage() {
                 lastBytesRef.current = 0;
                 offsetRef.current = 0;
                 sendFileChunks(dc);
-            } else if (e.data === 'chunk-ack') {
-                // Backpressure acknowledgement
-                sendFileChunks(dc);
             }
         };
     };
 
-    const sendFileChunks = (dc: RTCDataChannel) => {
-        if (abortRef.current || !file) return;
+    const sendFileChunks = async (dc: RTCDataChannel) => {
+        if (abortRef.current || !file || status === 'complete') return;
 
-        if (offsetRef.current >= file.size) {
+        // Fill buffer up to MAX_BUFFER_AMOUNT
+        while (offsetRef.current < file.size && dc.bufferedAmount < MAX_BUFFER_AMOUNT) {
+            if (abortRef.current) break;
+
+            const end = Math.min(offsetRef.current + CHUNK_SIZE, file.size);
+            const chunk = file.slice(offsetRef.current, end);
+
+            try {
+                const buffer = await chunk.arrayBuffer();
+                dc.send(buffer);
+                offsetRef.current = end;
+                updateProgress(offsetRef.current, file.size);
+            } catch (err) {
+                console.error("DataChannel send error", err);
+                setErrorMsg("Connection dropped during transfer.");
+                setStatus('error');
+                cleanup();
+                return;
+            }
+        }
+
+        if (offsetRef.current >= file.size && status !== 'complete') {
             dc.send(JSON.stringify({ type: 'done' }));
             setStatus('complete');
-            return;
         }
-
-        // Wait for buffer to drain if it's too full
-        if (dc.bufferedAmount > MAX_BUFFER_AMOUNT) {
-            setTimeout(() => sendFileChunks(dc), 50);
-            return;
-        }
-
-        const chunk = file.slice(offsetRef.current, offsetRef.current + CHUNK_SIZE);
-        const reader = new FileReader();
-
-        reader.onload = (e) => {
-            if (e.target?.result && !abortRef.current) {
-                try {
-                    dc.send(e.target.result as ArrayBuffer);
-                    offsetRef.current += chunk.size;
-                    updateProgress(offsetRef.current, file.size);
-
-                    // We rely on 'chunk-ack' or loop to send more?
-                    // Faster to push chunks until buffer is full, then wait for drain
-                    if (dc.bufferedAmount < MAX_BUFFER_AMOUNT) {
-                        sendFileChunks(dc);
-                    } else {
-                        // Wait for buffer drain event
-                        dc.onbufferedamountlow = () => {
-                            dc.onbufferedamountlow = null;
-                            sendFileChunks(dc);
-                        };
-                    }
-                } catch (err) {
-                    console.error("DataChannel send error", err);
-                    setErrorMsg("Connection dropped during transfer.");
-                    setStatus('error');
-                    cleanup();
-                }
-            }
-        };
-        reader.readAsArrayBuffer(chunk);
     };
 
     // --- RECEIVER LOGIC ---
