@@ -157,21 +157,30 @@ public class UploadService {
                         throw new IllegalStateException("Upload is not in progress");
                 }
 
-                // Get confirmed chunks
-                List<Chunk> chunks = chunkRepository.findByIdUploadId(uploadId);
-                if (chunks.size() != upload.getTotalChunks()) {
-                        throw new IllegalStateException(
-                                        "Not all chunks uploaded. Expected: " + upload.getTotalChunks() +
-                                                        ", got: " + chunks.size());
+                // Query S3 directly for the list of uploaded parts (bypassing browser CORS ETag
+                // issues)
+                ListPartsRequest listRequest = ListPartsRequest.builder()
+                                .bucket(bucket)
+                                .key(upload.getS3Key())
+                                .uploadId(upload.getS3MultipartId())
+                                .build();
+
+                ListPartsResponse listResponse = s3Client.listParts(listRequest);
+
+                if (!listResponse.hasParts() || listResponse.parts().size() != upload.getTotalChunks()) {
+                        long found = listResponse.hasParts() ? listResponse.parts().size() : 0;
+                        log.error("S3 Parts mismatch for upload {}: expected {}, found {}", uploadId,
+                                        upload.getTotalChunks(), found);
+                        throw new IllegalStateException("Not all chunks uploaded to S3. Expected: "
+                                        + upload.getTotalChunks() + ", found: " + found);
                 }
 
-                // Complete S3 multipart upload
-                List<CompletedPart> completedParts = chunks.stream()
-                                .map(c -> CompletedPart.builder()
-                                                .partNumber(c.getId().getChunkNumber())
-                                                .eTag(c.getEtag())
+                // Complete S3 multipart upload using S3's exact ETags (with quotes intact)
+                List<CompletedPart> completedParts = listResponse.parts().stream()
+                                .map(p -> CompletedPart.builder()
+                                                .partNumber(p.partNumber())
+                                                .eTag(p.eTag())
                                                 .build())
-                                .sorted((a, b) -> Integer.compare(a.partNumber(), b.partNumber()))
                                 .collect(Collectors.toList());
 
                 CompleteMultipartUploadRequest s3Request = CompleteMultipartUploadRequest.builder()
