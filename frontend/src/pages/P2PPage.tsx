@@ -52,6 +52,7 @@ export default function P2PPage() {
     // Receiver streams
     const fileHandleRef = useRef<any>(null);
     const writableStreamRef = useRef<any>(null);
+    const receiverBufferRef = useRef<ArrayBuffer[]>([]);
 
     useEffect(() => {
         if (urlRoomId && role === 'receiver') {
@@ -324,25 +325,34 @@ export default function P2PPage() {
                                     suggestedName: msg.name
                                 });
                                 writableStreamRef.current = await fileHandleRef.current.createWritable();
-                                setStatus('transferring');
-                                lastTimeRef.current = Date.now();
-                                lastBytesRef.current = 0;
-                                offsetRef.current = 0;
-                                dc.send('meta-ack');
                             } else {
-                                // Fallback for browsers without File System API
-                                setErrorMsg("Browser doesn't support massive direct-to-disk streams.");
-                                setStatus('error');
-                                cleanup();
+                                // Fallback: Memory buffer (for mobile/safari)
+                                console.log("Direct storage not supported, falling back to memory buffer.");
+                                receiverBufferRef.current = [];
                             }
+
+                            setStatus('transferring');
+                            lastTimeRef.current = Date.now();
+                            lastBytesRef.current = 0;
+                            offsetRef.current = 0;
+                            dc.send('meta-ack');
                         } catch (err) {
-                            setErrorMsg("Download cancelled by user.");
+                            setErrorMsg("Download cancelled or storage error.");
                             setStatus('error');
                             cleanup();
                         }
                     } else if (msg.type === 'done') {
                         if (writableStreamRef.current) {
                             await writableStreamRef.current.close();
+                        } else {
+                            // Trigger Blob download from memory
+                            const blob = new Blob(receiverBufferRef.current);
+                            const url = URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.href = url;
+                            a.download = incomingFileName;
+                            a.click();
+                            URL.revokeObjectURL(url);
                         }
                         setStatus('complete');
                         cleanup();
@@ -352,9 +362,11 @@ export default function P2PPage() {
                 // Binary chunk
                 if (writableStreamRef.current) {
                     await writableStreamRef.current.write(e.data);
-                    offsetRef.current += e.data.byteLength;
-                    updateProgress(offsetRef.current, incomingFileSize);
+                } else {
+                    receiverBufferRef.current.push(e.data);
                 }
+                offsetRef.current += e.data.byteLength;
+                updateProgress(offsetRef.current, incomingFileSize);
             }
         };
     };
@@ -430,6 +442,15 @@ export default function P2PPage() {
                                 connect & download.
                             </button>
                             {errorMsg && <p className="text-red-400 mt-4">{errorMsg}</p>}
+                        </div>
+                    )}
+
+                    {status === 'waiting' && role === 'receiver' && (
+                        <div className="text-center">
+                            <div className="w-16 h-16 rounded-full border-4 border-t-[#EFD2B0] border-slate-700 animate-spin mx-auto mb-6"></div>
+                            <h2 className="text-2xl title-genz font-bold mb-2">joining room {roomId}...</h2>
+                            <p className="text-slate-400 font-medium">connecting to sender. stay on this page.</p>
+                            <button onClick={cleanup} className="mt-8 text-slate-500 hover:text-white text-sm">Cancel</button>
                         </div>
                     )}
 
