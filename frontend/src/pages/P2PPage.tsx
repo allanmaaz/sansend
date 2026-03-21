@@ -30,6 +30,12 @@ export default function P2PPage() {
     const wsRef = useRef<WebSocket | null>(null);
     const pcRef = useRef<RTCPeerConnection | null>(null);
     const dcRef = useRef<RTCDataChannel | null>(null);
+    const roomIdRef = useRef(roomId);
+
+    // Sync ref with state
+    useEffect(() => {
+        roomIdRef.current = roomId;
+    }, [roomId]);
 
     const offsetRef = useRef(0);
     const lastTimeRef = useRef(Date.now());
@@ -82,18 +88,23 @@ export default function P2PPage() {
             wsRef.current = ws;
 
             ws.onopen = () => {
+                console.log(`[WS] Open. Joining room: ${id}`);
                 ws.send(JSON.stringify({ type: 'join', roomId: id }));
                 setStatus('waiting');
             };
 
             ws.onmessage = async (e) => {
                 const data = JSON.parse(e.data);
+                console.log("[WS] Message received:", data.type);
                 if (data.type === 'error') {
                     setErrorMsg(data.message);
                     setStatus('error');
                     cleanup();
-                } else if (data.type === 'peer-joined' && isSender) {
-                    initiateWebRTC();
+                } else if (data.type === 'peer-joined') {
+                    console.log("[WS] Peer joined! sender status:", isSender);
+                    if (isSender) {
+                        initiateWebRTC();
+                    }
                 } else if (data.type === 'peer-disconnected') {
                     if (status !== 'complete') {
                         setErrorMsg('Peer disconnected.');
@@ -140,10 +151,11 @@ export default function P2PPage() {
 
         pc.onicecandidate = (event) => {
             if (event.candidate && wsRef.current) {
+                console.log("[WebRTC] Sending candidate to room:", roomIdRef.current);
                 wsRef.current.send(JSON.stringify({
                     type: 'candidate',
                     candidate: event.candidate,
-                    roomId
+                    roomId: roomIdRef.current
                 }));
             }
         };
@@ -171,7 +183,8 @@ export default function P2PPage() {
 
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
-        wsRef.current?.send(JSON.stringify({ type: 'offer', sdp: pc.localDescription, roomId }));
+        console.log("[WebRTC] Sending offer to room:", roomIdRef.current);
+        wsRef.current?.send(JSON.stringify({ type: 'offer', sdp: pc.localDescription, roomId: roomIdRef.current }));
     };
 
     const handleOffer = async (offer: RTCSessionDescriptionInit) => {
@@ -185,7 +198,8 @@ export default function P2PPage() {
         await pc.setRemoteDescription(new RTCSessionDescription(offer));
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
-        wsRef.current?.send(JSON.stringify({ type: 'answer', sdp: pc.localDescription, roomId }));
+        console.log("[WebRTC] Sending answer to room:", roomIdRef.current);
+        wsRef.current?.send(JSON.stringify({ type: 'answer', sdp: pc.localDescription, roomId: roomIdRef.current }));
     };
 
     const handleAnswer = async (answer: RTCSessionDescriptionInit) => {
