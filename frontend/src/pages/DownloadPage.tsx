@@ -72,11 +72,11 @@ export default function DownloadPage() {
             {/* Header */}
             <div className="text-center mb-8">
                 <div className="text-center mb-10 relative z-10">
-                    <h1 className="text-6xl md:text-7xl font-black title-gradient mb-4 drop-shadow-2xl">
-                        Sansend
+                    <h1 className="text-6xl md:text-7xl font-sans tracking-tighter title-genz mb-4 drop-shadow-xl">
+                        sansend.
                     </h1>
-                    <p className="text-slate-300 text-lg md:text-xl font-medium tracking-wide">
-                        {meta?.fileName ? 'Your light-speed transfer is ready.' : 'Loading transfer...'}
+                    <p className="text-slate-300/80 text-lg md:text-xl font-medium tracking-wide">
+                        {meta?.fileName ? 'your transfer is ready.' : 'loading...'}
                     </p>
                 </div>
             </div>
@@ -109,27 +109,19 @@ export default function DownloadPage() {
                 {meta && !errorDisplay && (
                     <div className="glass-card p-8">
                         {/* File Info */}
-                        <div className="flex items-start gap-4 mb-6">
-                            <div className="w-14 h-14 bg-primary-500/20 rounded-2xl flex items-center justify-center flex-shrink-0">
-                                <svg className="w-7 h-7 text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
-                                        d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                        <div className="flex flex-col items-center justify-center mb-6">
+                            <div className="w-20 h-20 mx-auto bg-[#547792]/20 rounded-full flex items-center justify-center mb-4">
+                                <svg className="w-10 h-10 text-[#547792] animate-float" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                                 </svg>
                             </div>
-                            <div className="flex-1 min-w-0">
-                                <h2 className="text-xl font-bold text-dark-100 truncate">{meta.fileName}</h2>
-                                <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-sm text-dark-400">
-                                    <span>{formatBytes(meta.fileSizeBytes)}</span>
-                                    <span>•</span>
-                                    <span>{formatTimeRemaining(meta.expiresAt)}</span>
-                                    {meta.maxDownloads && (
-                                        <>
-                                            <span>•</span>
-                                            <span>{meta.downloadCount}/{meta.maxDownloads} downloads</span>
-                                        </>
-                                    )}
-                                </div>
-                            </div>
+                            <h2 className="text-2xl font-bold text-white title-genz tracking-tight truncate px-4">
+                                {meta.fileName}
+                            </h2>
+                            <p className="text-slate-300/80 mt-2 text-sm">
+                                {formatBytes(meta.fileSizeBytes)}
+                                {meta.maxDownloads && ` • ${meta.maxDownloads - meta.downloadCount} downloads left`}
+                            </p>
                         </div>
 
                         {/* Expired / Limit */}
@@ -146,31 +138,31 @@ export default function DownloadPage() {
 
                         {/* Password Gate */}
                         {needsPassword && !isExpired && !isLimitReached && (
-                            <div className="mb-6">
-                                <div className="flex items-center gap-2 mb-3 text-dark-300 text-sm">
-                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                                            d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                                    </svg>
-                                    This file is password-protected
+                            <div className="glass-card p-8 text-center max-w-sm mx-auto">
+                                <div className="mb-6">
+                                    <div className="w-20 h-20 mx-auto bg-[#408A71]/20 rounded-full flex items-center justify-center mb-4">
+                                        <svg className="w-10 h-10 text-[#EFD2B0]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1}
+                                                d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                                        </svg>
+                                    </div>
+                                    <h2 className="text-2xl font-bold text-white title-genz tracking-tight mb-2">password protected</h2>
+                                    <p className="text-slate-300/80 text-sm">enter the password to unlock this transfer.</p>
                                 </div>
-                                <div className="flex gap-2">
-                                    <input
-                                        type="password"
-                                        placeholder="Enter password"
-                                        value={password}
-                                        onChange={(e) => setPassword(e.target.value)}
-                                        onKeyDown={(e) => e.key === 'Enter' && handleAuth()}
-                                        id="download-password-input"
-                                    />
-                                    <button
-                                        onClick={handleAuth}
-                                        className="px-6 py-2 bg-primary-600 hover:bg-primary-500 text-white rounded-xl font-medium transition-colors flex-shrink-0"
-                                        id="unlock-button"
-                                    >
-                                        Unlock
-                                    </button>
-                                </div>
+                                <input
+                                    type="password"
+                                    placeholder="password"
+                                    value={password}
+                                    onChange={(e) => setPassword(e.target.value)}
+                                    onKeyDown={(e) => e.key === 'Enter' && handleAuth()}
+                                    className="mb-4 text-center"
+                                />
+                                <button
+                                    onClick={handleAuth}
+                                    className="w-full btn-genz py-3 font-semibold"
+                                >
+                                    unlock.
+                                </button>
                                 {authError && (
                                     <p className="text-red-400 text-sm mt-2">{authError}</p>
                                 )}

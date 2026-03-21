@@ -196,11 +196,11 @@ export default function UploadPage() {
         <div className="min-h-screen flex flex-col items-center justify-center px-4 py-12">
             {/* Header */}
             <div className="text-center mb-10 relative z-10">
-                <h1 className="text-6xl md:text-7xl font-black title-gradient mb-4 drop-shadow-2xl">
-                    Sansend
+                <h1 className="text-6xl md:text-7xl font-sans tracking-tighter title-genz mb-4 drop-shadow-xl">
+                    sansend.
                 </h1>
-                <p className="text-slate-300 text-lg md:text-xl font-medium tracking-wide">
-                    Transfer files up to 50GB+ — light speed, secure, and simple.
+                <p className="text-slate-300/80 text-lg md:text-xl font-medium tracking-wide">
+                    drop your files. up to 50gb.
                 </p>
             </div>
 
@@ -226,13 +226,13 @@ export default function UploadPage() {
                                 id="file-input"
                             />
                             <div className="mb-4">
-                                <svg className="mx-auto w-16 h-16 text-primary-400 animate-float" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                                <svg className="mx-auto w-16 h-16 text-[#EFD2B0] animate-float opacity-80" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1}
                                         d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                                 </svg>
                             </div>
-                            <p className="text-lg font-medium text-dark-200">
-                                {file ? file.name : 'Drop your file here or click to browse'}
+                            <p className="text-lg font-medium text-slate-200">
+                                {file ? file.name : 'drop a file here or browse.'}
                             </p>
                             {file && (
                                 <p className="text-dark-400 mt-2 text-sm">
@@ -304,10 +304,10 @@ export default function UploadPage() {
                                 {/* Send Button */}
                                 <button
                                     onClick={startUpload}
-                                    className="mt-6 w-full btn-glow text-white font-semibold py-4 rounded-xl text-lg"
+                                    className="mt-6 w-full btn-genz py-4 text-lg tracking-wide"
                                     id="send-button"
                                 >
-                                    🚀 Send It
+                                    send it.
                                 </button>
                             </>
                         )}
@@ -319,17 +319,17 @@ export default function UploadPage() {
                     <div className="glass-card p-8">
                         <div className="flex items-center justify-between mb-6">
                             <div>
-                                <h2 className="text-2xl font-black text-white title-gradient pb-1">
-                                    {stage === 'completing' ? 'Finalizing at Light Speed...' : 'Warp Speed Uploading...'}
+                                <h2 className="text-2xl font-bold text-white title-genz tracking-tight pb-1">
+                                    {stage === 'completing' ? 'wrapping up...' : 'sending...'}
                                 </h2>
-                                <p className="text-slate-400 text-sm mt-1 truncate max-w-xs">{file?.name}</p>
+                                <p className="text-slate-400/80 text-sm mt-1 truncate max-w-xs">{file?.name}</p>
                             </div>
                             <button
                                 onClick={handleAbort}
-                                className="px-4 py-2 text-sm text-red-400 border border-red-400/30 rounded-lg hover:bg-red-400/10 transition-colors"
+                                className="px-4 py-2 text-sm text-slate-300 border border-slate-500/30 rounded-lg hover:bg-slate-500/20 transition-colors"
                                 id="abort-button"
                             >
-                                Cancel
+                                cancel
                             </button>
                         </div>
 
@@ -379,13 +379,13 @@ export default function UploadPage() {
                 {stage === 'success' && result && (
                     <div className="glass-card p-8 text-center">
                         <div className="mb-6">
-                            <div className="w-20 h-20 mx-auto bg-green-500/20 rounded-full flex items-center justify-center mb-4">
-                                <svg className="w-10 h-10 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                            <div className="w-20 h-20 mx-auto bg-[#408A71]/20 rounded-full flex items-center justify-center mb-4">
+                                <svg className="w-10 h-10 text-[#EFD2B0]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M5 13l4 4L19 7" />
                                 </svg>
                             </div>
-                            <h2 className="text-2xl font-bold text-dark-100">File Sent!</h2>
-                            <p className="text-dark-400 mt-2">
+                            <h2 className="text-3xl font-bold text-white title-genz tracking-tight">sent.</h2>
+                            <p className="text-slate-300/80 mt-2">
                                 {result.fileName} • {formatBytes(result.fileSizeBytes)}
                             </p>
                         </div>
@@ -435,10 +435,10 @@ export default function UploadPage() {
                         {/* Actions */}
                         <button
                             onClick={handleReset}
-                            className="btn-glow text-white font-semibold py-3 px-8 rounded-xl"
+                            className="btn-genz py-3 px-8 text-lg w-full md:w-auto"
                             id="upload-another-button"
                         >
-                            Upload Another File
+                            send another.
                         </button>
                     </div>
                 )}
