@@ -3,6 +3,17 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { QRCodeSVG } from 'qrcode.react';
 import { formatBytes, formatDuration, formatSpeed } from '../utils';
 
+// Premium animations
+const shimmerStyle = `
+@keyframes shimmer {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+}
+.animate-shimmer {
+    animation: shimmer 1.5s infinite linear;
+}
+`;
+
 const CHUNK_SIZE = 256 * 1024; // 256KB for much higher throughput
 const MAX_BUFFER_AMOUNT = 8 * 1024 * 1024; // 8MB buffer
 const BUFFER_LOW_THRESHOLD = 1024 * 1024; // 1MB low threshold trigger
@@ -220,7 +231,7 @@ export default function P2PPage() {
     const setupDataChannelSender = (dc: RTCDataChannel) => {
         dc.bufferedAmountLowThreshold = BUFFER_LOW_THRESHOLD;
         dc.onopen = () => {
-            setStatus('connected');
+            handlePeerConnected();
             // Send metadata first
             dc.send(JSON.stringify({
                 type: 'meta',
@@ -244,6 +255,14 @@ export default function P2PPage() {
                 sendFileChunks(dc);
             }
         };
+    };
+
+    const handlePeerConnected = () => {
+        if (role === 'sender') {
+            setStatus('connected'); // Shows as "Ready! waiting for recipient to accept"
+        } else {
+            setStatus('connected'); // Shows as "Incoming transfer! click download to start"
+        }
     };
 
     const sendFileChunks = async (dc: RTCDataChannel) => {
@@ -285,7 +304,7 @@ export default function P2PPage() {
 
     const setupDataChannelReceiver = (dc: RTCDataChannel) => {
         dc.onopen = () => {
-            setStatus('connected');
+            handlePeerConnected();
         };
 
         dc.onmessage = async (e) => {
@@ -360,18 +379,20 @@ export default function P2PPage() {
 
     return (
         <div className="min-h-screen flex flex-col items-center justify-center px-4 py-12 relative z-10">
+            <style>{shimmerStyle}</style>
+
             <div className="absolute top-6 left-6">
-                <a href="/" className="text-white title-genz font-bold text-xl hover:opacity-80 transition-opacity">
-                    ← cloud mode.
+                <a href="/" className="text-white/60 title-genz font-bold text-xl hover:text-white transition-all backdrop-blur-sm px-4 py-2 rounded-full border border-white/5 bg-white/5">
+                    ← cloud.
                 </a>
             </div>
 
-            <div className="text-center mb-10">
-                <h1 className="text-6xl md:text-7xl font-sans tracking-tighter title-genz mb-2 drop-shadow-xl text-[#EFD2B0]">
-                    p2p infinite.
+            <div className="text-center mb-10 relative">
+                <h1 className="text-6xl md:text-8xl font-sans tracking-tighter title-genz mb-2 drop-shadow-2xl text-[#EFD2B0] animate-float">
+                    p2p.
                 </h1>
-                <p className="text-slate-300/80 text-lg md:text-xl font-medium tracking-wide">
-                    browser-to-browser. no sizing limits.
+                <p className="text-slate-300/60 text-lg md:text-xl font-medium tracking-[0.2em] uppercase">
+                    infinite stream
                 </p>
             </div>
 
@@ -444,6 +465,23 @@ export default function P2PPage() {
                         </div>
                     )}
 
+                    {status === 'connected' && (
+                        <div className="text-center py-6">
+                            <div className="w-20 h-20 mx-auto bg-[#EFD2B0]/20 rounded-full flex items-center justify-center mb-6 animate-pulse">
+                                <svg className="w-10 h-10 text-[#EFD2B0]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                                </svg>
+                            </div>
+                            <h2 className="text-3xl title-genz font-bold mb-2">tunnel ready.</h2>
+                            <p className="text-slate-400 font-medium tracking-wide">
+                                {role === 'sender' ? 'waiting for peer to accept file...' : 'incoming transfer! click join above.'}
+                            </p>
+                            {role === 'receiver' && (
+                                <p className="text-xs text-[#EFD2B0] mt-4 opacity-70">choose where to save the file on your device.</p>
+                            )}
+                        </div>
+                    )}
+
                     {status === 'transferring' && (
                         <div>
                             <div className="flex justify-between items-end mb-4">
@@ -459,8 +497,12 @@ export default function P2PPage() {
                                 </div>
                             </div>
 
-                            <div className="progress-bar-bg h-4 mb-3">
-                                <div className="progress-bar-fill h-full" style={{ width: `${Math.min(progress, 100)}%` }} />
+                            <div className="progress-bar-bg h-4 mb-3 overflow-hidden relative">
+                                <div className="progress-bar-fill h-full relative" style={{ width: `${Math.min(progress, 100)}%` }}>
+                                    {status === 'transferring' && (
+                                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/40 to-transparent animate-shimmer" />
+                                    )}
+                                </div>
                             </div>
 
                             <div className="flex justify-between text-slate-400 text-sm font-mono">
