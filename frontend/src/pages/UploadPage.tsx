@@ -444,8 +444,15 @@ export default function UploadPage() {
                 )}
             </div>
 
+            {/* P2P CTA Link */}
+            {stage === 'idle' && (
+                <div className="mt-10 text-center text-slate-400 text-sm tracking-wide bg-dark-900/40 px-6 py-3 rounded-full border border-slate-700/50 backdrop-blur-sm">
+                    sending 1TB+? <a href="/p2p" className="text-[#EFD2B0] hover:text-white font-semibold transition-colors">try p2p infinite mode.</a>
+                </div>
+            )}
+
             {/* Footer */}
-            <p className="mt-12 text-dark-600 text-sm">
+            <p className="mt-12 text-slate-500 text-sm">
                 End-to-end encrypted • Files auto-delete after expiry
             </p>
         </div>
