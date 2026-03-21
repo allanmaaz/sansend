@@ -9,11 +9,13 @@ const BUFFER_LOW_THRESHOLD = 1024 * 1024;
 
 type P2PRole = 'sender' | 'receiver' | null;
 type P2PState = 'idle' | 'waiting' | 'connecting' | 'connected' | 'transferring' | 'complete' | 'error';
+type P2PView = 'choice' | 'send' | 'receive' | 'transfer';
 
 export default function P2PPage() {
     const { roomId: urlRoomId } = useParams();
     const navigate = useNavigate();
 
+    const [view, setView] = useState<P2PView>(urlRoomId ? 'transfer' : 'choice');
     const [role, setRole] = useState<P2PRole>(urlRoomId ? 'receiver' : null);
     const [roomId, setRoomId] = useState(urlRoomId || '');
     const [status, setStatus] = useState<P2PState>(urlRoomId ? 'waiting' : 'idle');
@@ -32,7 +34,6 @@ export default function P2PPage() {
     const dcRef = useRef<RTCDataChannel | null>(null);
     const roomIdRef = useRef(roomId);
 
-    // Sync ref with state
     useEffect(() => {
         roomIdRef.current = roomId;
     }, [roomId]);
@@ -66,19 +67,11 @@ export default function P2PPage() {
     const getWsUrl = () => {
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const apiUrl = import.meta.env.VITE_API_URL || '';
-
-        let wsUrl: string;
         if (apiUrl.startsWith('http')) {
-            // Absolute URL from env (e.g. https://sansend.onrender.com/api)
-            wsUrl = apiUrl.replace('http', 'ws') + '/ws/signaling';
-        } else {
-            // Local fallback or relative
-            const isProd = import.meta.env.PROD;
-            const backendHost = isProd ? 'sansend.onrender.com' : 'localhost:8080';
-            wsUrl = `${protocol}//${backendHost}/api/ws/signaling`;
+            return apiUrl.replace('http', 'ws') + '/ws/signaling';
         }
-        console.log("Connecting to WebSocket:", wsUrl);
-        return wsUrl;
+        const host = import.meta.env.PROD ? 'sansend.onrender.com' : 'localhost:8080';
+        return `${protocol}//${host}/api/ws/signaling`;
     };
 
     const connectWebSocket = useCallback((id: string, isSender: boolean) => {
@@ -88,23 +81,18 @@ export default function P2PPage() {
             wsRef.current = ws;
 
             ws.onopen = () => {
-                console.log(`[WS] Open. Joining room: ${id}`);
                 ws.send(JSON.stringify({ type: 'join', roomId: id }));
                 setStatus('waiting');
             };
 
             ws.onmessage = async (e) => {
                 const data = JSON.parse(e.data);
-                console.log("[WS] Message received:", data.type);
                 if (data.type === 'error') {
                     setErrorMsg(data.message);
                     setStatus('error');
                     cleanup();
                 } else if (data.type === 'peer-joined') {
-                    console.log("[WS] Peer joined! sender status:", isSender);
-                    if (isSender) {
-                        initiateWebRTC();
-                    }
+                    if (isSender) initiateWebRTC();
                 } else if (data.type === 'peer-disconnected') {
                     if (status !== 'complete') {
                         setErrorMsg('Peer disconnected.');
@@ -120,22 +108,12 @@ export default function P2PPage() {
                 }
             };
 
-            ws.onerror = (e) => {
-                console.error("WebSocket Error:", e);
-                setErrorMsg('WebSocket connection failed. Ensure backend is running.');
+            ws.onerror = () => {
+                setErrorMsg('WebSocket connection failed.');
                 setStatus('error');
             };
-
-            ws.onclose = (e) => {
-                console.log("WebSocket Closed:", e.code, e.reason);
-                if (status !== 'complete' && status !== 'error' && !abortRef.current) {
-                    setErrorMsg(`Signaling lost (${e.code}).`);
-                    setStatus('error');
-                }
-            };
         } catch (err) {
-            console.error("WS Creation Error:", err);
-            setErrorMsg("Could not create WebSocket connection.");
+            setErrorMsg("Connection error.");
             setStatus('error');
         }
     }, [status]);
@@ -148,10 +126,8 @@ export default function P2PPage() {
             ]
         });
         pcRef.current = pc;
-
         pc.onicecandidate = (event) => {
             if (event.candidate && wsRef.current) {
-                console.log("[WebRTC] Sending candidate to room:", roomIdRef.current);
                 wsRef.current.send(JSON.stringify({
                     type: 'candidate',
                     candidate: event.candidate,
@@ -159,7 +135,6 @@ export default function P2PPage() {
                 }));
             }
         };
-
         pc.oniceconnectionstatechange = () => {
             if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed') {
                 if (status !== 'complete' && !abortRef.current) {
@@ -169,7 +144,6 @@ export default function P2PPage() {
                 }
             }
         };
-
         return pc;
     };
 
@@ -180,10 +154,8 @@ export default function P2PPage() {
         dc.binaryType = 'arraybuffer';
         setupDataChannelSender(dc);
         dcRef.current = dc;
-
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
-        console.log("[WebRTC] Sending offer to room:", roomIdRef.current);
         wsRef.current?.send(JSON.stringify({ type: 'offer', sdp: pc.localDescription, roomId: roomIdRef.current }));
     };
 
@@ -194,11 +166,9 @@ export default function P2PPage() {
         dc.binaryType = 'arraybuffer';
         setupDataChannelReceiver(dc);
         dcRef.current = dc;
-
         await pc.setRemoteDescription(new RTCSessionDescription(offer));
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
-        console.log("[WebRTC] Sending answer to room:", roomIdRef.current);
         wsRef.current?.send(JSON.stringify({ type: 'answer', sdp: pc.localDescription, roomId: roomIdRef.current }));
     };
 
@@ -219,13 +189,17 @@ export default function P2PPage() {
         const newId = Math.random().toString(36).substring(2, 8).toUpperCase();
         setRoomId(newId);
         setRole('sender');
+        setView('transfer');
         connectWebSocket(newId, true);
     };
 
     const joinRoom = (id: string) => {
-        setRoomId(id);
+        if (!id) { setErrorMsg("Enter a valid room code."); return; }
+        const cleanId = id.trim().toUpperCase();
+        setRoomId(cleanId);
         setRole('receiver');
-        connectWebSocket(id, false);
+        setView('transfer');
+        connectWebSocket(cleanId, false);
     };
 
     const setupDataChannelSender = (dc: RTCDataChannel) => {
@@ -263,16 +237,14 @@ export default function P2PPage() {
                 setStatus('error'); cleanup(); return;
             }
         }
-        if (offsetRef.current >= file.size) {
+        if (offsetRef.current >= file.size && status !== 'complete') {
             dc.send(JSON.stringify({ type: 'done' }));
             setStatus('complete');
         }
     };
 
     const setupDataChannelReceiver = (dc: RTCDataChannel) => {
-        dc.onopen = () => {
-            setStatus('connected');
-        };
+        dc.onopen = () => setStatus('connected');
         dc.onmessage = async (e) => {
             if (abortRef.current) return;
             if (typeof e.data === 'string') {
@@ -295,9 +267,8 @@ export default function P2PPage() {
                             dc.send('meta-ack');
                         } catch (err) { setStatus('error'); cleanup(); }
                     } else if (msg.type === 'done') {
-                        if (writableStreamRef.current) {
-                            await writableStreamRef.current.close();
-                        } else {
+                        if (writableStreamRef.current) { await writableStreamRef.current.close(); }
+                        else {
                             const blob = new Blob(receiverBufferRef.current);
                             const url = URL.createObjectURL(blob);
                             const a = document.createElement('a');
@@ -308,11 +279,8 @@ export default function P2PPage() {
                     }
                 } catch (err) { }
             } else {
-                if (writableStreamRef.current) {
-                    await writableStreamRef.current.write(e.data);
-                } else {
-                    receiverBufferRef.current.push(e.data);
-                }
+                if (writableStreamRef.current) { await writableStreamRef.current.write(e.data); }
+                else { receiverBufferRef.current.push(e.data); }
                 offsetRef.current += e.data.byteLength;
                 updateProgress(offsetRef.current, incomingFileSize);
             }
@@ -334,7 +302,7 @@ export default function P2PPage() {
     const shareUrl = `${window.location.origin}/p2p/${roomId}`;
 
     return (
-        <div className="min-h-screen flex flex-col items-center justify-center px-4 py-12 relative z-10">
+        <div className="min-h-screen flex flex-col items-center justify-center px-4 py-12 relative z-10 transition-all duration-700">
             <div className="absolute top-6 left-6">
                 <a href="/" className="text-white/60 title-genz font-bold text-xl hover:text-white transition-all backdrop-blur-sm px-4 py-2 rounded-full border border-white/5 bg-white/5">
                     ← cloud.
@@ -350,160 +318,238 @@ export default function P2PPage() {
                 </p>
             </div>
 
-            <div className="w-full max-w-xl">
-                <div className={`glass-card p-8 min-h-[300px] flex flex-col justify-center ${status === 'connecting' ? 'pulse-border' : ''}`}>
-                    {/* IDLE SENDER */}
-                    {status === 'idle' && !urlRoomId && (
-                        <div className="animate-in fade-in duration-500">
-                            <div className="mb-6">
-                                <label className="block text-sm text-slate-300 mb-2 font-medium">Select Massive File (1TB+ Supported)</label>
+            <div className="w-full max-w-4xl">
+                {/* CHOICE VIEW */}
+                {view === 'choice' && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8 animate-in slide-in-from-bottom-5 duration-700">
+                        <div
+                            onClick={() => setView('send')}
+                            className="glass-card p-10 cursor-pointer group hover:border-[#EFD2B0]/40 transition-all text-center flex flex-col items-center"
+                        >
+                            <div className="w-20 h-20 bg-[#EFD2B0]/10 rounded-3xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-500">
+                                <svg className="w-10 h-10 text-[#EFD2B0]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                                </svg>
+                            </div>
+                            <h2 className="text-3xl font-bold title-genz mb-3">send file.</h2>
+                            <p className="text-slate-400 font-medium">Host a room and stream massive data directly to anyone.</p>
+                        </div>
+
+                        <div
+                            onClick={() => setView('receive')}
+                            className="glass-card p-10 cursor-pointer group hover:border-[#408A71]/40 transition-all text-center flex flex-col items-center"
+                        >
+                            <div className="w-20 h-20 bg-[#408A71]/10 rounded-3xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-500">
+                                <svg className="w-10 h-10 text-[#408A71]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                                </svg>
+                            </div>
+                            <h2 className="text-3xl font-bold title-genz mb-3">receive file.</h2>
+                            <p className="text-slate-400 font-medium">Enter a code or scan to receive an infinite stream.</p>
+                        </div>
+                    </div>
+                )}
+
+                {/* SEND VIEW */}
+                {view === 'send' && (
+                    <div className="max-w-xl mx-auto glass-card p-8 animate-in fade-in zoom-in duration-500">
+                        <h2 className="text-3xl font-bold title-genz mb-6 text-center">host transfer.</h2>
+                        <div className="mb-8">
+                            <label className="block text-sm text-slate-400 mb-4 font-medium uppercase tracking-widest text-center">Drag or Select Massive File</label>
+                            <div className="drop-zone p-10 flex flex-col items-center justify-center relative overflow-hidden group">
                                 <input
                                     type="file"
                                     onChange={(e) => setFile(e.target.files?.[0] || null)}
-                                    className="w-full border border-slate-500/30 rounded-xl p-3 bg-dark-900/50 text-slate-200"
+                                    className="absolute inset-0 opacity-0 cursor-pointer z-10"
                                 />
-                            </div>
-                            <button
-                                onClick={createRoom}
-                                disabled={!file}
-                                className={`w-full py-4 rounded-xl font-bold text-lg transition-all ${file ? 'btn-genz shadow-lg' : 'bg-slate-700 text-slate-400'}`}
-                            >
-                                host transfer room.
-                            </button>
-                        </div>
-                    )}
-
-                    {/* IDLE RECEIVER / WAITING FOR WS */}
-                    {(status === 'idle' || status === 'waiting') && urlRoomId && role === 'receiver' && (
-                        <div className="text-center animate-in fade-in duration-500">
-                            <div className="w-16 h-16 rounded-full border-4 border-t-[#EFD2B0] border-slate-700 animate-spin mx-auto mb-6"></div>
-                            <h2 className="text-2xl title-genz font-bold mb-2">joining room {roomId}...</h2>
-                            <p className="text-slate-400 font-medium tracking-wide">connecting to sender. stay on this page.</p>
-                            <button onClick={cleanup} className="mt-8 text-slate-500 hover:text-white text-sm">Cancel</button>
-                        </div>
-                    )}
-
-                    {/* WAITING SENDER */}
-                    {status === 'waiting' && role === 'sender' && (
-                        <div className="text-center">
-                            <div className="w-16 h-16 rounded-full border-4 border-t-[#408A71] border-slate-700 animate-spin mx-auto mb-6"></div>
-                            <h2 className="text-2xl title-genz font-bold mb-2">waiting for receiver...</h2>
-                            <p className="text-slate-400 mb-6 font-medium">Share this link. Don't close this tab.</p>
-
-                            <div className="bg-dark-900/50 rounded-xl p-3 flex items-center gap-2 mb-6 border border-white/5">
-                                <input type="text" readOnly value={shareUrl} className="flex-1 bg-transparent text-sm text-slate-400" />
-                                <button onClick={() => navigator.clipboard.writeText(shareUrl)} className="px-4 py-2 hover:bg-slate-700 rounded-lg text-sm text-slate-200 font-medium">Copy</button>
-                            </div>
-                            <div className="flex justify-center mb-6">
-                                <div className="p-3 bg-white rounded-2xl shadow-2xl">
-                                    <QRCodeSVG value={shareUrl} size={130} fgColor="#121416" />
+                                <div className="w-16 h-16 bg-white/5 rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                                    <svg className="w-8 h-8 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                    </svg>
                                 </div>
+                                <p className="text-white font-medium text-lg truncate max-w-full px-4">
+                                    {file ? file.name : 'choose a file...'}
+                                </p>
+                                {file && <p className="text-slate-500 text-sm mt-2">{formatBytes(file.size)}</p>}
                             </div>
-                            <button onClick={cleanup} className="text-slate-500 hover:text-white text-sm">Cancel</button>
                         </div>
-                    )}
+                        <button
+                            onClick={createRoom}
+                            disabled={!file}
+                            className={`w-full py-4 rounded-2xl font-bold text-xl transition-all shadow-2xl ${file ? 'btn-genz' : 'bg-slate-800 text-slate-500 cursor-not-allowed'}`}
+                        >
+                            start hosting.
+                        </button>
+                        <button onClick={() => setView('choice')} className="mt-6 text-slate-500 hover:text-white text-sm mx-auto block transition-colors uppercase tracking-widest">Back</button>
+                        {errorMsg && <p className="text-red-400 mt-6 text-center font-medium">{errorMsg}</p>}
+                    </div>
+                )}
 
-                    {/* CONNECTING / NEGOTIATING */}
-                    {status === 'connecting' && (
-                        <div className="text-center py-8">
-                            <div className="w-20 h-20 mx-auto bg-[#EFD2B0]/10 rounded-full flex items-center justify-center mb-6 animate-pulse">
-                                <svg className="w-10 h-10 text-[#EFD2B0]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M8 7h12m0 0l-4-4m4 4l-4 4m-8 6H4m0 0l4 4m-4-4l4-4" />
+                {/* RECEIVE VIEW */}
+                {view === 'receive' && (
+                    <div className="max-w-xl mx-auto glass-card p-8 animate-in fade-in zoom-in duration-500">
+                        <h2 className="text-3xl font-bold title-genz mb-6 text-center">join transfer.</h2>
+                        <div className="mb-8 text-center">
+                            <label className="block text-sm text-slate-400 mb-4 font-medium uppercase tracking-widest">Enter 6-Digit Room Code</label>
+                            <input
+                                type="text"
+                                placeholder="e.g. A1B2C3"
+                                value={roomId}
+                                onChange={(e) => setRoomId(e.target.value.toUpperCase())}
+                                className="w-full bg-black/40 border-2 border-white/5 rounded-2xl p-5 text-center text-4xl font-mono tracking-[0.3em] focus:border-[#408A71]/50 transition-all text-[#EFD2B0]"
+                                maxLength={6}
+                            />
+                        </div>
+                        <button
+                            onClick={() => joinRoom(roomId)}
+                            disabled={!roomId || roomId.length < 4}
+                            className={`w-full py-4 rounded-2xl font-bold text-xl transition-all shadow-2xl ${roomId.length >= 4 ? 'btn-genz' : 'bg-slate-800 text-slate-500 cursor-not-allowed'}`}
+                        >
+                            connect to host.
+                        </button>
+                        <div className="mt-8 pt-8 border-t border-white/5 flex flex-col items-center">
+                            <p className="text-slate-500 text-sm mb-4 uppercase tracking-widest">or scan the code</p>
+                            <div className="w-12 h-12 bg-white/5 rounded-xl flex items-center justify-center cursor-not-allowed opacity-50">
+                                <svg className="w-6 h-6 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
                                 </svg>
                             </div>
-                            <h2 className="text-2xl title-genz font-bold mb-2">tunneling...</h2>
-                            <p className="text-slate-400 font-medium">establishing direct p2p stream.</p>
                         </div>
-                    )}
+                        <button onClick={() => setView('choice')} className="mt-6 text-slate-500 hover:text-white text-sm mx-auto block transition-colors uppercase tracking-widest">Back</button>
+                        {errorMsg && <p className="text-red-400 mt-6 text-center font-medium">{errorMsg}</p>}
+                    </div>
+                )}
 
-                    {/* CONNECTED / READY */}
-                    {status === 'connected' && (
-                        <div className="text-center py-8">
-                            <div className="w-20 h-20 mx-auto bg-[#EFD2B0]/20 rounded-full flex items-center justify-center mb-6">
-                                <svg className="w-10 h-10 text-[#EFD2B0]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                                </svg>
-                            </div>
-                            <h2 className="text-3xl title-genz font-bold mb-2">handshake ok.</h2>
-                            <p className="text-slate-400 font-medium mb-4">
-                                {role === 'sender' ? 'waiting for peer to accept file...' : 'incoming transfer!'}
-                            </p>
-                            {role === 'receiver' && (
-                                <p className="text-xs text-[#EFD2B0] opacity-70">you may be asked to choose a save location.</p>
-                            )}
-                        </div>
-                    )}
+                {/* TRANSFER VIEW */}
+                {view === 'transfer' && (
+                    <div className="max-w-xl mx-auto glass-card p-8 min-h-[400px] flex flex-col justify-center animate-in zoom-in duration-500">
+                        {status === 'waiting' && role === 'sender' && (
+                            <div className="text-center">
+                                <div className="w-16 h-16 rounded-full border-4 border-t-[#408A71] border-slate-700 animate-spin mx-auto mb-6"></div>
+                                <h2 className="text-3xl title-genz font-bold mb-2">ready to beam.</h2>
+                                <p className="text-slate-400 mb-8 font-medium italic">"Stay on this page. Sending is about to start."</p>
 
-                    {/* TRANSFERRING */}
-                    {status === 'transferring' && (
-                        <div>
-                            <div className="flex justify-between items-end mb-6">
-                                <div>
-                                    <h2 className="text-4xl title-genz font-bold pb-1">streaming.</h2>
-                                    <p className="text-slate-400 text-sm mt-1 max-w-[200px] truncate">
-                                        {role === 'sender' ? file?.name : incomingFileName}
-                                    </p>
+                                <div className="bg-black/40 rounded-2xl p-1 mb-8 border border-white/5 group">
+                                    <div className="flex items-center gap-3 p-3">
+                                        <div className="flex-1 text-center font-mono text-3xl tracking-[0.2em] text-[#EFD2B0] pl-8">
+                                            {roomId}
+                                        </div>
+                                        <button
+                                            onClick={() => navigator.clipboard.writeText(shareUrl)}
+                                            className="bg-white/5 hover:bg-white/10 p-3 rounded-xl transition-colors"
+                                            title="Copy link"
+                                        >
+                                            <svg className="w-6 h-6 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+                                            </svg>
+                                        </button>
+                                    </div>
                                 </div>
-                                <div className="text-right">
-                                    <p className="text-white font-mono font-bold text-xl">{progress.toFixed(1)}%</p>
-                                    <p className="text-slate-400 text-sm font-mono">{formatSpeed(speed)}</p>
+
+                                <div className="flex justify-center mb-8">
+                                    <div className="p-4 bg-white rounded-[2rem] shadow-[0_0_50px_rgba(255,255,255,0.1)]">
+                                        <QRCodeSVG value={shareUrl} size={150} fgColor="#121416" />
+                                    </div>
                                 </div>
+                                <button onClick={() => { cleanup(); setView('choice'); setStatus('idle'); }} className="text-slate-500 hover:text-white text-sm uppercase tracking-widest pt-4 transition-colors">Abort Session</button>
                             </div>
+                        )}
 
-                            <div className="progress-bar-bg h-4 mb-4 overflow-hidden relative">
-                                <div className="progress-bar-fill h-full relative" style={{ width: `${Math.min(progress, 100)}%` }}>
-                                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent animate-shimmer" />
+                        {status === 'waiting' && role === 'receiver' && (
+                            <div className="text-center">
+                                <div className="w-16 h-16 rounded-full border-4 border-t-[#EFD2B0] border-slate-700 animate-spin mx-auto mb-6"></div>
+                                <h2 className="text-3xl title-genz font-bold mb-2">seeking tunnel.</h2>
+                                <p className="text-slate-400 mb-8 font-medium">Connecting to room <span className="text-[#EFD2B0] font-bold">{roomId}</span>...</p>
+                                <button onClick={() => { cleanup(); setView('choice'); setStatus('idle'); }} className="text-slate-500 hover:text-white text-sm uppercase tracking-widest pt-4">Cancel</button>
+                            </div>
+                        )}
+
+                        {status === 'connecting' && (
+                            <div className="text-center py-8">
+                                <div className="w-24 h-24 mx-auto bg-[#EFD2B0]/10 rounded-full flex items-center justify-center mb-8 animate-pulse pulse-border border">
+                                    <svg className="w-12 h-12 text-[#EFD2B0]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M8 7h12m0 0l-4-4m4 4l-4 4m-8 6H4m0 0l4 4m-4-4l4-4" />
+                                    </svg>
                                 </div>
+                                <h2 className="text-3xl title-genz font-bold mb-2">threading.</h2>
+                                <p className="text-slate-400 font-medium tracking-wide">negotiating p2p data stream tunnel...</p>
                             </div>
+                        )}
 
-                            <div className="flex justify-between text-slate-500 text-xs font-mono uppercase tracking-widest">
-                                <span>{formatBytes(role === 'sender' ? file!.size : incomingFileSize)}</span>
-                                <span>ETA: {formatDuration(eta)}</span>
+                        {status === 'connected' && (
+                            <div className="text-center py-8">
+                                <div className="w-24 h-24 mx-auto bg-[#EFD2B0]/20 rounded-full flex items-center justify-center mb-8">
+                                    <svg className="w-12 h-12 text-[#EFD2B0]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                                    </svg>
+                                </div>
+                                <h2 className="text-4xl title-genz font-bold mb-2">alive.</h2>
+                                <p className="text-slate-400 font-medium mb-6">
+                                    {role === 'sender' ? 'waiting for peer to accept file...' : 'incoming stream! choose save path now.'}
+                                </p>
                             </div>
+                        )}
 
-                            <button onClick={cleanup} className="mt-10 text-slate-500 hover:text-white text-sm mx-auto block">abort transfer</button>
-                        </div>
-                    )}
+                        {status === 'transferring' && (
+                            <div className="animate-in fade-in duration-700">
+                                <div className="flex justify-between items-end mb-8">
+                                    <div>
+                                        <h2 className="text-5xl title-genz font-bold pb-2">beaming.</h2>
+                                        <p className="text-slate-400 text-sm mt-1 max-w-[250px] truncate font-medium">
+                                            {role === 'sender' ? file?.name : incomingFileName}
+                                        </p>
+                                    </div>
+                                    <div className="text-right">
+                                        <p className="text-[#EFD2B0] font-mono font-bold text-3xl">{progress.toFixed(1)}%</p>
+                                        <p className="text-slate-400 text-sm font-mono mt-1">{formatSpeed(speed)}</p>
+                                    </div>
+                                </div>
 
-                    {/* COMPLETE */}
-                    {status === 'complete' && (
-                        <div className="text-center py-6">
-                            <div className="w-20 h-20 mx-auto bg-[#408A71]/20 rounded-full flex items-center justify-center mb-6">
-                                <svg className="w-10 h-10 text-[#408A71]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                </svg>
+                                <div className="progress-bar-bg h-6 mb-6 overflow-hidden relative shadow-inner">
+                                    <div className="progress-bar-fill h-full relative" style={{ width: `${Math.min(progress, 100)}%` }}>
+                                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent animate-shimmer" />
+                                    </div>
+                                </div>
+
+                                <div className="flex justify-between text-slate-500 text-xs font-mono uppercase tracking-[0.2em]">
+                                    <span>{formatBytes(role === 'sender' ? file!.size : incomingFileSize)} total</span>
+                                    <span>timeLeft: {formatDuration(eta)}</span>
+                                </div>
+
+                                <button onClick={cleanup} className="mt-12 text-slate-500 hover:text-red-400 text-sm mx-auto block transition-colors uppercase tracking-widest font-bold">abort stream</button>
                             </div>
-                            <h2 className="text-3xl font-bold title-genz mb-2">done.</h2>
-                            <p className="text-slate-400 mb-8 font-medium">transfer finished successfully.</p>
-                            <button onClick={() => navigate('/')} className="w-full btn-genz py-4 text-lg font-bold">back home</button>
-                        </div>
-                    )}
+                        )}
 
-                    {/* ERROR */}
-                    {status === 'error' && (
-                        <div className="text-center py-6">
-                            <div className="w-20 h-20 mx-auto bg-red-500/10 rounded-full flex items-center justify-center mb-6">
-                                <svg className="w-10 h-10 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                </svg>
+                        {status === 'complete' && (
+                            <div className="text-center py-6 animate-in zoom-in duration-500">
+                                <div className="w-24 h-24 mx-auto bg-[#408A71]/20 rounded-full flex items-center justify-center mb-8">
+                                    <svg className="w-12 h-12 text-[#408A71]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                    </svg>
+                                </div>
+                                <h2 className="text-4xl font-bold title-genz mb-3">landed.</h2>
+                                <p className="text-slate-400 mb-10 font-medium text-lg">Transfer completed successfully via P2P.</p>
+                                <button onClick={() => navigate('/')} className="w-full btn-genz py-5 text-xl font-bold rounded-2xl">back to cloud mode</button>
                             </div>
-                            <h2 className="text-2xl font-bold text-red-400 mb-2">failed.</h2>
-                            <p className="text-slate-400 mb-8">{errorMsg || 'Unknown connection error.'}</p>
-                            <button onClick={() => window.location.reload()} className="px-8 py-3 border border-slate-700 rounded-xl text-slate-300 hover:bg-slate-800 transition-all">
-                                try again
-                            </button>
-                        </div>
-                    )}
+                        )}
 
-                    {/* STUCK FALLBACK / DEBUG */}
-                    {!['idle', 'waiting', 'connecting', 'connected', 'transferring', 'complete', 'error'].includes(status) && (
-                        <div className="text-center">
-                            <button onClick={() => window.location.reload()} className="text-slate-500 underline text-sm">
-                                Stuck? Click here to refresh.
-                            </button>
-                        </div>
-                    )}
-                </div>
+                        {status === 'error' && (
+                            <div className="text-center py-6">
+                                <div className="w-24 h-24 mx-auto bg-red-500/10 rounded-full flex items-center justify-center mb-8">
+                                    <svg className="w-12 h-12 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                    </svg>
+                                </div>
+                                <h2 className="text-3xl font-bold text-red-400 mb-2">crashed.</h2>
+                                <p className="text-slate-400 mb-10 text-lg">{errorMsg || 'Connection dropped.'}</p>
+                                <button onClick={() => window.location.reload()} className="px-10 py-4 border-2 border-slate-700 rounded-2xl text-slate-300 hover:bg-slate-800 transition-all font-bold uppercase tracking-widest">
+                                    reboot
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                )}
             </div>
         </div>
     );
