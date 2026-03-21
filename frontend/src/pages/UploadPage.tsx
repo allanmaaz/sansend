@@ -195,11 +195,13 @@ export default function UploadPage() {
     return (
         <div className="min-h-screen flex flex-col items-center justify-center px-4 py-12">
             {/* Header */}
-            <div className="text-center mb-8">
-                <h1 className="text-5xl font-extrabold bg-gradient-to-r from-primary-400 via-primary-300 to-purple-400 bg-clip-text text-transparent mb-3">
+            <div className="text-center mb-10 relative z-10">
+                <h1 className="text-6xl md:text-7xl font-black title-gradient mb-4 drop-shadow-2xl">
                     Sansend
                 </h1>
-                <p className="text-dark-400 text-lg">Transfer files up to 50GB+ — fast, secure, and simple.</p>
+                <p className="text-slate-300 text-lg md:text-xl font-medium tracking-wide">
+                    Transfer files up to 50GB+ — light speed, secure, and simple.
+                </p>
             </div>
 
             <div className="w-full max-w-2xl">
@@ -317,10 +319,10 @@ export default function UploadPage() {
                     <div className="glass-card p-8">
                         <div className="flex items-center justify-between mb-6">
                             <div>
-                                <h2 className="text-xl font-bold text-dark-100">
-                                    {stage === 'completing' ? 'Finalizing...' : 'Uploading'}
+                                <h2 className="text-2xl font-black text-white title-gradient pb-1">
+                                    {stage === 'completing' ? 'Finalizing at Light Speed...' : 'Warp Speed Uploading...'}
                                 </h2>
-                                <p className="text-dark-400 text-sm mt-1">{file?.name}</p>
+                                <p className="text-slate-400 text-sm mt-1 truncate max-w-xs">{file?.name}</p>
                             </div>
                             <button
                                 onClick={handleAbort}

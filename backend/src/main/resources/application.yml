@@ -39,7 +39,7 @@ s3:
 
 # --- App Configuration ---
 sansend:
-  chunk-size-bytes: 10485760  # 10 MB default chunk size
+  chunk-size-bytes: 52428800  # 50 MB chunk size for light-speed uploads
   jwt-secret: ${JWT_SECRET:sansend-dev-secret-key-that-is-at-least-256-bits-long!!}
   jwt-expiry-minutes: 15
   rate-limit:

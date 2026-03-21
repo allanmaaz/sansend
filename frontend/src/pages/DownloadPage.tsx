@@ -71,11 +71,14 @@ export default function DownloadPage() {
         <div className="min-h-screen flex flex-col items-center justify-center px-4 py-12">
             {/* Header */}
             <div className="text-center mb-8">
-                <a href="/" className="inline-block">
-                    <h1 className="text-4xl font-extrabold bg-gradient-to-r from-primary-400 via-primary-300 to-purple-400 bg-clip-text text-transparent mb-2">
+                <div className="text-center mb-10 relative z-10">
+                    <h1 className="text-6xl md:text-7xl font-black title-gradient mb-4 drop-shadow-2xl">
                         Sansend
                     </h1>
-                </a>
+                    <p className="text-slate-300 text-lg md:text-xl font-medium tracking-wide">
+                        {meta?.fileName ? 'Your light-speed transfer is ready.' : 'Loading transfer...'}
+                    </p>
+                </div>
             </div>
 
             <div className="w-full max-w-lg">
