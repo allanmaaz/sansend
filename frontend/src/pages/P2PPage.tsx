@@ -60,51 +60,73 @@ export default function P2PPage() {
     const getWsUrl = () => {
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const apiUrl = import.meta.env.VITE_API_URL || '';
+
+        let wsUrl: string;
         if (apiUrl.startsWith('http')) {
-            return apiUrl.replace('http', 'ws') + '/ws/signaling';
+            // Absolute URL from env (e.g. https://sansend.onrender.com/api)
+            wsUrl = apiUrl.replace('http', 'ws') + '/ws/signaling';
+        } else {
+            // Local fallback or relative
+            const isProd = import.meta.env.PROD;
+            const backendHost = isProd ? 'sansend.onrender.com' : 'localhost:8080';
+            wsUrl = `${protocol}//${backendHost}/api/ws/signaling`;
         }
-        const backendHost = import.meta.env.PROD ? 'sansend.onrender.com' : 'localhost:8080';
-        return `${protocol}//${backendHost}/api/ws/signaling`;
+        console.log("Connecting to WebSocket:", wsUrl);
+        return wsUrl;
     };
 
     const connectWebSocket = useCallback((id: string, isSender: boolean) => {
-        if (wsRef.current) wsRef.current.close();
+        try {
+            const url = getWsUrl();
+            const ws = new WebSocket(url);
+            wsRef.current = ws;
 
-        const ws = new WebSocket(getWsUrl());
-        wsRef.current = ws;
+            ws.onopen = () => {
+                ws.send(JSON.stringify({ type: 'join', roomId: id }));
+                setStatus('waiting');
+            };
 
-        ws.onopen = () => {
-            ws.send(JSON.stringify({ type: 'join', roomId: id }));
-            setStatus('waiting');
-        };
-
-        ws.onmessage = async (e) => {
-            const data = JSON.parse(e.data);
-            if (data.type === 'error') {
-                setErrorMsg(data.message);
-                setStatus('error');
-                cleanup();
-            } else if (data.type === 'peer-joined' && isSender) {
-                initiateWebRTC();
-            } else if (data.type === 'peer-disconnected') {
-                if (status !== 'complete') {
-                    setErrorMsg('Peer disconnected.');
+            ws.onmessage = async (e) => {
+                const data = JSON.parse(e.data);
+                if (data.type === 'error') {
+                    setErrorMsg(data.message);
                     setStatus('error');
                     cleanup();
+                } else if (data.type === 'peer-joined' && isSender) {
+                    initiateWebRTC();
+                } else if (data.type === 'peer-disconnected') {
+                    if (status !== 'complete') {
+                        setErrorMsg('Peer disconnected.');
+                        setStatus('error');
+                        cleanup();
+                    }
+                } else if (data.type === 'offer' && !isSender) {
+                    await handleOffer(data.sdp);
+                } else if (data.type === 'answer' && isSender) {
+                    await handleAnswer(data.sdp);
+                } else if (data.type === 'candidate') {
+                    handleCandidate(data.candidate);
                 }
-            } else if (data.type === 'offer' && !isSender) {
-                await handleOffer(data.sdp);
-            } else if (data.type === 'answer' && isSender) {
-                await handleAnswer(data.sdp);
-            } else if (data.type === 'candidate') {
-                handleCandidate(data.candidate);
-            }
-        };
+            };
 
-        ws.onerror = () => {
-            setErrorMsg('WebSocket connection error.');
+            ws.onerror = (e) => {
+                console.error("WebSocket Error:", e);
+                setErrorMsg('WebSocket connection failed. Ensure backend is running.');
+                setStatus('error');
+            };
+
+            ws.onclose = (e) => {
+                console.log("WebSocket Closed:", e.code, e.reason);
+                if (status !== 'complete' && status !== 'error' && !abortRef.current) {
+                    setErrorMsg(`Signaling lost (${e.code}).`);
+                    setStatus('error');
+                }
+            };
+        } catch (err) {
+            console.error("WS Creation Error:", err);
+            setErrorMsg("Could not create WebSocket connection.");
             setStatus('error');
-        };
+        }
     }, [status]);
 
     const setupPeerConnection = () => {
