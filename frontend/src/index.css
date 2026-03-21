@@ -17,28 +17,64 @@
 
 body {
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
-  /* Dynamic Flowing Gradient Background */
-  background: linear-gradient(-45deg, var(--genz-blue), var(--bg-dark), var(--genz-jade), var(--genz-sand), var(--bg-dark));
-  background-size: 400% 400%;
-  animation: dynamicBG 20s ease infinite;
+  background-color: var(--bg-dark);
   min-height: 100vh;
   color: #f8fafc;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   overflow-x: hidden;
+  position: relative;
 }
 
-@keyframes dynamicBG {
+/* Background Orbs */
+.bg-orb {
+  position: absolute;
+  filter: blur(120px);
+  z-index: -1;
+  border-radius: 50%;
+  animation: floatOrb 15s ease-in-out infinite alternate;
+}
+
+.bg-orb-1 {
+  background: var(--genz-blue);
+  width: 50vw;
+  height: 50vh;
+  top: -10%;
+  left: -10%;
+  opacity: 0.5;
+}
+
+.bg-orb-2 {
+  background: var(--genz-jade);
+  width: 50vw;
+  height: 50vh;
+  bottom: -10%;
+  right: -10%;
+  opacity: 0.4;
+  animation-delay: -5s;
+}
+
+.bg-orb-3 {
+  background: var(--genz-sand);
+  width: 40vw;
+  height: 40vh;
+  top: 40%;
+  left: 40%;
+  opacity: 0.2;
+  animation-delay: -10s;
+}
+
+@keyframes floatOrb {
   0% {
-    background-position: 0% 50%;
+    transform: translate(0, 0) scale(1);
   }
 
   50% {
-    background-position: 100% 50%;
+    transform: translate(10%, 15%) scale(1.1);
   }
 
   100% {
-    background-position: 0% 50%;
+    transform: translate(-10%, -5%) scale(0.9);
   }
 }
 
