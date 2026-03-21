@@ -87,7 +87,7 @@ export default function UploadPage() {
 
             let uploadedBytes = 0;
             const startTime = Date.now();
-            const CONCURRENT = 3;
+            const CONCURRENT = 10;
 
             // Upload chunks with concurrency
             const uploadChunk = async (chunkNum: number) => {
@@ -123,14 +123,22 @@ export default function UploadPage() {
                 setEta(remaining);
             };
 
-            // Process chunks in batches
-            for (let i = 0; i < totalChunks; i += CONCURRENT) {
+            // Process chunks with a sliding window for maximum throughput
+            let currentChunk = 0;
+            const activeUploads = new Set<Promise<void>>();
+
+            while (currentChunk < totalChunks || activeUploads.size > 0) {
                 if (abortRef.current) break;
-                const batch = [];
-                for (let j = i; j < Math.min(i + CONCURRENT, totalChunks); j++) {
-                    batch.push(uploadChunk(j + 1));
+
+                while (activeUploads.size < CONCURRENT && currentChunk < totalChunks) {
+                    currentChunk++;
+                    const p = uploadChunk(currentChunk).finally(() => activeUploads.delete(p));
+                    activeUploads.add(p);
                 }
-                await Promise.all(batch);
+
+                if (activeUploads.size > 0) {
+                    await Promise.race(activeUploads);
+                }
             }
 
             if (abortRef.current) return;
@@ -345,12 +353,12 @@ export default function UploadPage() {
                                     <div
                                         key={i}
                                         className={`w-3 h-3 rounded-sm transition-colors ${chunk.status === 'done'
-                                                ? 'bg-green-500'
-                                                : chunk.status === 'uploading'
-                                                    ? 'bg-primary-500 animate-pulse'
-                                                    : chunk.status === 'error'
-                                                        ? 'bg-red-500'
-                                                        : 'bg-dark-700'
+                                            ? 'bg-green-500'
+                                            : chunk.status === 'uploading'
+                                                ? 'bg-primary-500 animate-pulse'
+                                                : chunk.status === 'error'
+                                                    ? 'bg-red-500'
+                                                    : 'bg-dark-700'
                                             }`}
                                         title={`Chunk ${i + 1}: ${chunk.status}`}
                                     />
@@ -394,8 +402,8 @@ export default function UploadPage() {
                                 <button
                                     onClick={handleCopyLink}
                                     className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${copied
-                                            ? 'bg-green-500/20 text-green-400'
-                                            : 'bg-primary-500/20 text-primary-300 hover:bg-primary-500/30'
+                                        ? 'bg-green-500/20 text-green-400'
+                                        : 'bg-primary-500/20 text-primary-300 hover:bg-primary-500/30'
                                         }`}
                                     id="copy-link-button"
                                 >
