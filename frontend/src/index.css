@@ -94,6 +94,36 @@ body {
   animation: float 5s ease-in-out infinite;
 }
 
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.animate-shimmer {
+  animation: shimmer 1.5s infinite linear;
+}
+
+@keyframes pulseBorder {
+
+  0%,
+  100% {
+    border-color: rgba(255, 255, 255, 0.1);
+  }
+
+  50% {
+    border-color: var(--genz-sand);
+  }
+}
+
+.pulse-border {
+  animation: pulseBorder 2s ease-in-out infinite;
+}
+
 /* Premium Gen Z Glassmorphism card */
 .glass-card {
   background: rgba(18, 20, 22, 0.5);
