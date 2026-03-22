@@ -38,6 +38,7 @@ export default function P2PPage() {
     const pcRef = useRef<RTCPeerConnection | null>(null);
     const dcRef = useRef<RTCDataChannel | null>(null);
     const roomIdRef = useRef(roomId);
+    const metaIntervalRef = useRef<any>(null);
 
     useEffect(() => {
         roomIdRef.current = roomId;
@@ -70,6 +71,7 @@ export default function P2PPage() {
         if (wsRef.current) { wsRef.current.close(); wsRef.current = null; }
         if (dcRef.current) { dcRef.current.close(); dcRef.current = null; }
         if (pcRef.current) { pcRef.current.close(); pcRef.current = null; }
+        if (metaIntervalRef.current) { clearInterval(metaIntervalRef.current); metaIntervalRef.current = null; }
         try { if (writableStreamRef.current) writableStreamRef.current.close(); } catch { }
     };
 
@@ -215,14 +217,28 @@ export default function P2PPage() {
     const setupDataChannelSender = (dc: RTCDataChannel) => {
         dc.bufferedAmountLowThreshold = BUFFER_LOW_THRESHOLD;
         dc.onopen = () => {
+            console.log("DataChannel sender open");
             setStatus('connected');
-            dc.send(JSON.stringify({ type: 'meta', name: file!.name, size: file!.size }));
+
+            // Heartbeat: keep sending meta until acked
+            if (metaIntervalRef.current) clearInterval(metaIntervalRef.current);
+            const sendMeta = () => {
+                if (status === 'connected' && dc.readyState === 'open') {
+                    console.log("Sending meta heartbeat...");
+                    dc.send(JSON.stringify({ type: 'meta', name: file!.name, size: file!.size }));
+                }
+            };
+            sendMeta();
+            metaIntervalRef.current = setInterval(sendMeta, 2000);
         };
         dc.onbufferedamountlow = () => {
             if (status === 'transferring' && !abortRef.current) sendFileChunks(dc);
         };
         dc.onmessage = (e) => {
+            console.log("Sender dc message:", e.data);
             if (e.data === 'meta-ack') {
+                console.log("Meta ACK received. Starting stream...");
+                if (metaIntervalRef.current) { clearInterval(metaIntervalRef.current); metaIntervalRef.current = null; }
                 setStatus('transferring');
                 lastTimeRef.current = Date.now();
                 lastBytesRef.current = 0;
@@ -262,8 +278,12 @@ export default function P2PPage() {
     };
 
     const setupDataChannelReceiver = (dc: RTCDataChannel) => {
-        dc.onopen = () => setStatus('connected');
+        dc.onopen = () => {
+            console.log("DataChannel receiver open");
+            setStatus('connected');
+        };
         dc.onmessage = async (e) => {
+            console.log("Receiver dc message arrived:", typeof e.data);
             if (abortRef.current) return;
             if (typeof e.data === 'string') {
                 try {

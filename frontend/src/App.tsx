@@ -16,8 +16,7 @@ function App() {
                 <Routes>
                     <Route path="/" element={<UploadPage />} />
                     <Route path="/dl/:linkId" element={<DownloadPage />} />
-                    <Route path="/p2p" element={<P2PPage />} />
-                    <Route path="/p2p/:roomId" element={<P2PPage />} />
+                    <Route path="/p2p/:roomId?" element={<P2PPage />} />
                 </Routes>
             </div>
         </div>
