@@ -7,6 +7,22 @@
   --genz-sand: #EFD2B0;
   --genz-jade: #408A71;
   --bg-dark: #121416;
+
+  --vibe-accent: var(--genz-sand);
+  --vibe-secondary: var(--genz-jade);
+}
+
+[data-vibe="neon"] {
+  --bg-dark: #05010a;
+  --genz-blue: #00ffff;
+  --vibe-accent: #00ffcc;
+  --vibe-secondary: #ff00ff;
+}
+
+[data-vibe="onyx"] {
+  --bg-dark: #000000;
+  --vibe-accent: #ffffff;
+  --vibe-secondary: #333333;
 }
 
 * {
@@ -247,4 +263,17 @@ select:focus {
 select option {
   background: var(--bg-dark);
   color: white;
+}
+
+/* History Sidebar */
+.history-sidebar {
+  @apply fixed right-0 top-0 h-full w-80 bg-black/80 backdrop-blur-2xl border-l border-white/5 z-50 p-6 transform transition-transform duration-500 shadow-2xl;
+}
+
+.history-item {
+  @apply p-4 mb-3 rounded-2xl bg-white/[0.03] border border-white/5 hover:bg-white/[0.06] transition-all cursor-pointer;
+}
+
+.vibe-dot {
+  @apply w-4 h-4 rounded-full border border-white/20 cursor-pointer transition-transform hover:scale-125;
 }

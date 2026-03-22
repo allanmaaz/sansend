@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import {
     initUpload,
@@ -10,6 +10,7 @@ import {
     UploadCompleteResponse,
 } from '../api';
 import { formatBytes, formatSpeed, formatDuration } from '../utils';
+import { useHistory } from '../hooks/useHistory';
 
 type UploadStage = 'idle' | 'uploading' | 'completing' | 'success' | 'error';
 
@@ -37,10 +38,18 @@ export default function UploadPage() {
     const [result, setResult] = useState<UploadCompleteResponse | null>(null);
     const [ownerToken, setOwnerToken] = useState('');
     const [copied, setCopied] = useState(false);
+    const [vibe, setVibe] = useState<'default' | 'neon' | 'onyx'>('default');
+    const [showHistory, setShowHistory] = useState(false);
+
+    const { history, addToHistory } = useHistory();
 
     const abortRef = useRef(false);
     const uploadIdRef = useRef<string>('');
     const fileInputRef = useRef<HTMLInputElement>(null);
+
+    useEffect(() => {
+        document.documentElement.setAttribute('data-vibe', vibe);
+    }, [vibe]);
 
     const handleDrag = useCallback((e: React.DragEvent) => {
         e.preventDefault();
@@ -148,6 +157,14 @@ export default function UploadPage() {
             const completeRes = await completeUpload(initRes.uploadId, request);
             setResult(completeRes);
             setStage('success');
+            addToHistory({
+                id: initRes.uploadId,
+                fileName: file.name,
+                fileSize: file.size,
+                type: 'cloud',
+                role: 'sender',
+                status: 'success'
+            });
 
         } catch (err: any) {
             if (!abortRef.current) {
@@ -193,7 +210,52 @@ export default function UploadPage() {
 
     // ---- RENDER ----
     return (
-        <div className="min-h-screen flex flex-col items-center justify-center px-4 py-12">
+        <div className="min-h-screen flex flex-col items-center justify-center px-4 py-12 relative overflow-x-hidden">
+            {/* Vibe & History Controls */}
+            <div className="fixed top-6 right-6 flex items-center gap-6 z-50">
+                <div className="flex gap-2">
+                    <button onClick={() => setVibe('default')} className="vibe-dot bg-[#EFD2B0]" title="Default"></button>
+                    <button onClick={() => setVibe('neon')} className="vibe-dot bg-[#00ffcc]" title="Neon"></button>
+                    <button onClick={() => setVibe('onyx')} className="vibe-dot bg-white" title="Onyx"></button>
+                </div>
+                <button
+                    onClick={() => setShowHistory(!showHistory)}
+                    className="text-white/60 hover:text-white transition-colors"
+                >
+                    <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                </button>
+            </div>
+
+            {/* History Sidebar */}
+            <div className={`history-sidebar ${showHistory ? 'translate-x-0' : 'translate-x-full'}`}>
+                <div className="flex justify-between items-center mb-8">
+                    <h3 className="text-xl font-bold title-genz">History</h3>
+                    <button onClick={() => setShowHistory(false)} className="text-slate-500 hover:text-white">✕</button>
+                </div>
+                <div className="overflow-y-auto h-[cale(100%-100px)]">
+                    {history.length === 0 ? (
+                        <p className="text-slate-500 text-center py-10 italic">No transfers yet.</p>
+                    ) : (
+                        history.map((item, idx) => (
+                            <div key={idx} className="history-item">
+                                <div className="flex justify-between items-start mb-1">
+                                    <span className="text-sm font-bold truncate max-w-[150px]">{item.fileName}</span>
+                                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded uppercase ${item.type === 'p2p' ? 'bg-blue-500/20 text-blue-400' : 'bg-green-500/20 text-green-400'}`}>
+                                        {item.type}
+                                    </span>
+                                </div>
+                                <div className="flex justify-between text-[11px] text-slate-500">
+                                    <span>{formatBytes(item.fileSize)}</span>
+                                    <span>{new Date(item.timestamp).toLocaleDateString()}</span>
+                                </div>
+                            </div>
+                        ))
+                    )}
+                </div>
+            </div>
+
             {/* Header */}
             <div className="text-center mb-10 relative z-10">
                 <h1 className="text-6xl md:text-7xl font-sans tracking-tighter title-genz mb-4 drop-shadow-xl">
