@@ -33,12 +33,24 @@ export default function P2PPage() {
 
     const [incomingFileName, setIncomingFileName] = useState('');
     const [incomingFileSize, setIncomingFileSize] = useState(0);
+    const incomingFileNameRef = useRef('');
+    const incomingFileSizeRef = useRef(0);
+
+    useEffect(() => {
+        incomingFileNameRef.current = incomingFileName;
+        incomingFileSizeRef.current = incomingFileSize;
+    }, [incomingFileName, incomingFileSize]);
 
     const wsRef = useRef<WebSocket | null>(null);
     const pcRef = useRef<RTCPeerConnection | null>(null);
     const dcRef = useRef<RTCDataChannel | null>(null);
     const roomIdRef = useRef(roomId);
+    const statusRef = useRef(status);
     const metaIntervalRef = useRef<any>(null);
+
+    useEffect(() => {
+        statusRef.current = status;
+    }, [status]);
 
     useEffect(() => {
         roomIdRef.current = roomId;
@@ -105,7 +117,7 @@ export default function P2PPage() {
                 } else if (data.type === 'peer-joined') {
                     if (isSender) initiateWebRTC();
                 } else if (data.type === 'peer-disconnected') {
-                    if (status !== 'complete') {
+                    if (statusRef.current !== 'complete') {
                         setErrorMsg('Peer disconnected.');
                         setStatus('error');
                         cleanup();
@@ -127,7 +139,7 @@ export default function P2PPage() {
             setErrorMsg("Connection error.");
             setStatus('error');
         }
-    }, [status]);
+    }, []); // status removed from deps to prevent loop
 
     const setupPeerConnection = () => {
         const pc = new RTCPeerConnection({
@@ -148,7 +160,7 @@ export default function P2PPage() {
         };
         pc.oniceconnectionstatechange = () => {
             if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed') {
-                if (status !== 'complete' && !abortRef.current) {
+                if (statusRef.current !== 'complete' && !abortRef.current) {
                     setErrorMsg('P2P connection lost.');
                     setStatus('error');
                     cleanup();
@@ -223,7 +235,7 @@ export default function P2PPage() {
             // Heartbeat: keep sending meta until acked
             if (metaIntervalRef.current) clearInterval(metaIntervalRef.current);
             const sendMeta = () => {
-                if (status === 'connected' && dc.readyState === 'open') {
+                if (statusRef.current === 'connected' && dc.readyState === 'open') {
                     console.log("Sending meta heartbeat...");
                     dc.send(JSON.stringify({ type: 'meta', name: file!.name, size: file!.size }));
                 }
@@ -232,7 +244,7 @@ export default function P2PPage() {
             metaIntervalRef.current = setInterval(sendMeta, 2000);
         };
         dc.onbufferedamountlow = () => {
-            if (status === 'transferring' && !abortRef.current) sendFileChunks(dc);
+            if (statusRef.current === 'transferring' && !abortRef.current) sendFileChunks(dc);
         };
         dc.onmessage = (e) => {
             console.log("Sender dc message:", e.data);
@@ -249,7 +261,7 @@ export default function P2PPage() {
     };
 
     const sendFileChunks = async (dc: RTCDataChannel) => {
-        if (abortRef.current || !file || status === 'complete') return;
+        if (abortRef.current || !file || statusRef.current === 'complete') return;
         while (offsetRef.current < file.size && dc.bufferedAmount < MAX_BUFFER_AMOUNT) {
             if (abortRef.current) break;
             const end = Math.min(offsetRef.current + CHUNK_SIZE, file.size);
@@ -291,6 +303,8 @@ export default function P2PPage() {
                     if (msg.type === 'meta') {
                         setIncomingFileName(msg.name);
                         setIncomingFileSize(msg.size);
+                        incomingFileNameRef.current = msg.name;
+                        incomingFileSizeRef.current = msg.size;
                         setStatus('pending_metadata');
                     } else if (msg.type === 'done') {
                         if (writableStreamRef.current) { await writableStreamRef.current.close(); }
@@ -298,14 +312,14 @@ export default function P2PPage() {
                             const blob = new Blob(receiverBufferRef.current);
                             const url = URL.createObjectURL(blob);
                             const a = document.createElement('a');
-                            a.href = url; a.download = incomingFileName; a.click();
+                            a.href = url; a.download = incomingFileNameRef.current; a.click();
                             URL.revokeObjectURL(url);
                         }
                         setStatus('complete'); cleanup();
                         addToHistory({
                             id: roomIdRef.current,
-                            fileName: incomingFileName,
-                            fileSize: incomingFileSize,
+                            fileName: incomingFileNameRef.current,
+                            fileSize: incomingFileSizeRef.current,
                             type: 'p2p',
                             role: 'receiver',
                             status: 'success'
@@ -316,7 +330,7 @@ export default function P2PPage() {
                 if (writableStreamRef.current) { await writableStreamRef.current.write(e.data); }
                 else { receiverBufferRef.current.push(e.data); }
                 offsetRef.current += e.data.byteLength;
-                updateProgress(offsetRef.current, incomingFileSize);
+                updateProgress(offsetRef.current, incomingFileSizeRef.current);
             }
         };
     };
@@ -325,7 +339,7 @@ export default function P2PPage() {
         if (!dcRef.current) return;
         try {
             if ('showSaveFilePicker' in window) {
-                fileHandleRef.current = await (window as any).showSaveFilePicker({ suggestedName: incomingFileName });
+                fileHandleRef.current = await (window as any).showSaveFilePicker({ suggestedName: incomingFileNameRef.current });
                 writableStreamRef.current = await fileHandleRef.current.createWritable();
             } else {
                 receiverBufferRef.current = [];
