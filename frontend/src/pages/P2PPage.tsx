@@ -9,7 +9,7 @@ const MAX_BUFFER_AMOUNT = 8 * 1024 * 1024;
 const BUFFER_LOW_THRESHOLD = 1024 * 1024;
 
 type P2PRole = 'sender' | 'receiver' | null;
-type P2PState = 'idle' | 'waiting' | 'connecting' | 'connected' | 'transferring' | 'complete' | 'error';
+type P2PState = 'idle' | 'waiting' | 'connecting' | 'connected' | 'pending_metadata' | 'transferring' | 'complete' | 'error';
 type P2PView = 'choice' | 'send' | 'receive' | 'transfer';
 
 export default function P2PPage() {
@@ -208,6 +208,7 @@ export default function P2PPage() {
         setRoomId(cleanId);
         setRole('receiver');
         setView('transfer');
+        setStatus('waiting');
         connectWebSocket(cleanId, false);
     };
 
@@ -270,19 +271,7 @@ export default function P2PPage() {
                     if (msg.type === 'meta') {
                         setIncomingFileName(msg.name);
                         setIncomingFileSize(msg.size);
-                        try {
-                            if ('showSaveFilePicker' in window) {
-                                fileHandleRef.current = await (window as any).showSaveFilePicker({ suggestedName: msg.name });
-                                writableStreamRef.current = await fileHandleRef.current.createWritable();
-                            } else {
-                                receiverBufferRef.current = [];
-                            }
-                            setStatus('transferring');
-                            lastTimeRef.current = Date.now();
-                            lastBytesRef.current = 0;
-                            offsetRef.current = 0;
-                            dc.send('meta-ack');
-                        } catch (err) { setStatus('error'); cleanup(); }
+                        setStatus('pending_metadata');
                     } else if (msg.type === 'done') {
                         if (writableStreamRef.current) { await writableStreamRef.current.close(); }
                         else {
@@ -310,6 +299,26 @@ export default function P2PPage() {
                 updateProgress(offsetRef.current, incomingFileSize);
             }
         };
+    };
+
+    const acceptTransfer = async () => {
+        if (!dcRef.current) return;
+        try {
+            if ('showSaveFilePicker' in window) {
+                fileHandleRef.current = await (window as any).showSaveFilePicker({ suggestedName: incomingFileName });
+                writableStreamRef.current = await fileHandleRef.current.createWritable();
+            } else {
+                receiverBufferRef.current = [];
+            }
+            setStatus('transferring');
+            lastTimeRef.current = Date.now();
+            lastBytesRef.current = 0;
+            offsetRef.current = 0;
+            dcRef.current.send('meta-ack');
+        } catch (err) {
+            setErrorMsg("Failed to start save. Did you cancel the dialog?");
+            setStatus('error');
+        }
     };
 
     const updateProgress = (loaded: number, total: number) => {
@@ -392,7 +401,7 @@ export default function P2PPage() {
             <div className="w-full max-w-4xl">
                 {/* CHOICE VIEW */}
                 {view === 'choice' && (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8 animate-in slide-in-from-bottom-5 duration-700">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8 duration-700">
                         <div
                             onClick={() => setView('send')}
                             className="glass-card p-10 cursor-pointer group hover:border-[#EFD2B0]/40 transition-all text-center flex flex-col items-center"
@@ -533,6 +542,29 @@ export default function P2PPage() {
                                 <h2 className="text-3xl title-genz font-bold mb-2">seeking tunnel.</h2>
                                 <p className="text-slate-400 mb-8 font-medium">Connecting to room <span className="text-[#EFD2B0] font-bold">{roomId}</span>...</p>
                                 <button onClick={() => { cleanup(); setView('choice'); setStatus('idle'); }} className="text-slate-500 hover:text-white text-sm uppercase tracking-widest pt-4">Cancel</button>
+                            </div>
+                        )}
+
+                        {status === 'pending_metadata' && (
+                            <div className="text-center py-6 animate-in zoom-in duration-500">
+                                <div className="w-24 h-24 mx-auto bg-[#EFD2B0]/20 rounded-full flex items-center justify-center mb-8">
+                                    <svg className="w-12 h-12 text-[#EFD2B0]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                                    </svg>
+                                </div>
+                                <h2 className="text-3xl title-genz font-bold mb-2">incoming.</h2>
+                                <p className="text-slate-400 font-medium mb-1">
+                                    <span className="text-white">{incomingFileName}</span>
+                                </p>
+                                <p className="text-slate-500 text-sm mb-8">{formatBytes(incomingFileSize)}</p>
+
+                                <button
+                                    onClick={acceptTransfer}
+                                    className="w-full btn-genz py-4 text-xl font-bold rounded-2xl shadow-xl hover:scale-105 transition-transform"
+                                >
+                                    accept & save.
+                                </button>
+                                <button onClick={() => { cleanup(); setView('choice'); setStatus('idle'); }} className="mt-6 text-slate-500 hover:text-white text-sm uppercase tracking-widest transition-colors font-bold">Reject</button>
                             </div>
                         )}
 
