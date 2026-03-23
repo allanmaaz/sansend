@@ -48,9 +48,10 @@ export default function P2PPage() {
     const statusRef = useRef(status);
     const metaIntervalRef = useRef<any>(null);
 
-    useEffect(() => {
-        statusRef.current = status;
-    }, [status]);
+    const setStatusWithRef = (s: P2PState) => {
+        statusRef.current = s;
+        setStatus(s);
+    };
 
     useEffect(() => {
         roomIdRef.current = roomId;
@@ -105,21 +106,21 @@ export default function P2PPage() {
 
             ws.onopen = () => {
                 ws.send(JSON.stringify({ type: 'join', roomId: id }));
-                setStatus('waiting');
+                setStatusWithRef('waiting');
             };
 
             ws.onmessage = async (e) => {
                 const data = JSON.parse(e.data);
                 if (data.type === 'error') {
                     setErrorMsg(data.message);
-                    setStatus('error');
+                    setStatusWithRef('error');
                     cleanup();
                 } else if (data.type === 'peer-joined') {
                     if (isSender) initiateWebRTC();
                 } else if (data.type === 'peer-disconnected') {
                     if (statusRef.current !== 'complete') {
                         setErrorMsg('Peer disconnected.');
-                        setStatus('error');
+                        setStatusWithRef('error');
                         cleanup();
                     }
                 } else if (data.type === 'offer' && !isSender) {
@@ -222,7 +223,7 @@ export default function P2PPage() {
         setRoomId(cleanId);
         setRole('receiver');
         setView('transfer');
-        setStatus('waiting');
+        setStatusWithRef('waiting');
         connectWebSocket(cleanId, false);
     };
 
@@ -251,7 +252,7 @@ export default function P2PPage() {
             if (e.data === 'meta-ack') {
                 console.log("Meta ACK received. Starting stream...");
                 if (metaIntervalRef.current) { clearInterval(metaIntervalRef.current); metaIntervalRef.current = null; }
-                setStatus('transferring');
+                setStatusWithRef('transferring');
                 lastTimeRef.current = Date.now();
                 lastBytesRef.current = 0;
                 offsetRef.current = 0;
@@ -305,7 +306,7 @@ export default function P2PPage() {
                         setIncomingFileSize(msg.size);
                         incomingFileNameRef.current = msg.name;
                         incomingFileSizeRef.current = msg.size;
-                        setStatus('pending_metadata');
+                        setStatusWithRef('pending_metadata');
                     } else if (msg.type === 'done') {
                         if (writableStreamRef.current) { await writableStreamRef.current.close(); }
                         else {
@@ -344,14 +345,14 @@ export default function P2PPage() {
             } else {
                 receiverBufferRef.current = [];
             }
-            setStatus('transferring');
+            setStatusWithRef('transferring');
             lastTimeRef.current = Date.now();
             lastBytesRef.current = 0;
             offsetRef.current = 0;
             dcRef.current.send('meta-ack');
         } catch (err) {
             setErrorMsg("Failed to start save. Did you cancel the dialog?");
-            setStatus('error');
+            setStatusWithRef('error');
         }
     };
 
@@ -623,8 +624,26 @@ export default function P2PPage() {
                                 </div>
                                 <h2 className="text-4xl title-genz font-bold mb-2">alive.</h2>
                                 <p className="text-slate-400 font-medium mb-6">
-                                    {role === 'sender' ? 'waiting for peer to accept file...' : 'incoming stream! choose save path now.'}
+                                    {role === 'sender' ? 'waiting for peer to accept chunk stream...' : 'incoming stream! choose save path now.'}
                                 </p>
+                                {role === 'sender' && (
+                                    <button
+                                        onClick={() => {
+                                            if (dcRef.current) {
+                                                console.log("Forcing start...");
+                                                if (metaIntervalRef.current) { clearInterval(metaIntervalRef.current); metaIntervalRef.current = null; }
+                                                setStatusWithRef('transferring');
+                                                lastTimeRef.current = Date.now();
+                                                lastBytesRef.current = 0;
+                                                offsetRef.current = 0;
+                                                sendFileChunks(dcRef.current);
+                                            }
+                                        }}
+                                        className="text-[10px] text-slate-600 hover:text-slate-400 uppercase tracking-widest font-bold border border-slate-800 rounded-lg px-3 py-1 mt-4 transition-colors"
+                                    >
+                                        Force Start if stuck
+                                    </button>
+                                )}
                             </div>
                         )}
 
